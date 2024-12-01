@@ -12,6 +12,13 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+      - name: Create Salesforce Package
+        run: |
+          mkdir -p src manifest
+          touch src/file1.txt manifest/package.xml # Example files
+          zip -r salesforce-package.zip src manifest
+      - name: List Workspace Files
+        run: ls -R
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
