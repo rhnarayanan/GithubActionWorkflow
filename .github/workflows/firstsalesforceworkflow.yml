@@ -17,7 +17,7 @@ jobs:
           sfdx force:mdapi:validate -d ./src -u test-org-alias
       - name: Package Metadata
         run: |
-          zip -r salesforce-package.zip ./src ./manifest
+          zip -r salesforce-package.zip ./src ./manifest || true
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v3
         with:
