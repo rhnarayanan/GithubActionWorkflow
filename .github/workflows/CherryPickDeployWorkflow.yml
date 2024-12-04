@@ -1,0 +1,63 @@
+name: Cherry-Pick and Deploy Workflow
+'on':
+  push:
+    tags:
+      - v*
+env:
+  DEV_BRANCH: dev
+  TEST_BRANCH: test
+  STAGE_BRANCH: stage
+  PROD_BRANCH: main
+jobs:
+  cherry-pick-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Get the current tag
+        id: tag_info
+        run: |
+          echo "TAG_NAME=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          echo "Release tag: ${GITHUB_REF_NAME}"
+      - name: Get commits since the last release
+        id: commits
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG_NAME}^)
+          echo "Previous tag: $PREV_TAG"
+          git log ${PREV_TAG}..${TAG_NAME} --oneline > commits.txt
+          cat commits.txt
+      - name: Cherry-pick to Dev
+        if: '${{ github.event_name == ''push'' }}'
+        run: |
+          git checkout $DEV_BRANCH
+          git cherry-pick $(cat commits.txt | awk '{print $1}')
+          git push origin $DEV_BRANCH
+      - name: Deploy to Dev
+        run: |
+          sfdx force:source:deploy -p ./src -u DevEnv
+      - name: Cherry-pick to Test
+        run: |
+          git checkout $TEST_BRANCH
+          git cherry-pick $(cat commits.txt | awk '{print $1}')
+          git push origin $TEST_BRANCH
+      - name: Deploy to Test
+        run: |
+          sfdx force:source:deploy -p ./src -u TestEnv
+      - name: Cherry-pick to Stage
+        run: |
+          git checkout $STAGE_BRANCH
+          git cherry-pick $(cat commits.txt | awk '{print $1}')
+          git push origin $STAGE_BRANCH
+      - name: Deploy to Stage
+        run: |
+          sfdx force:source:deploy -p ./src -u StageEnv
+      - name: Cherry-pick to Prod
+        run: |
+          git checkout $PROD_BRANCH
+          git cherry-pick $(cat commits.txt | awk '{print $1}')
+          git push origin $PROD_BRANCH
+      - name: Deploy to Prod
+        run: |
+          sfdx force:source:deploy -p ./src -u ProdEnv
