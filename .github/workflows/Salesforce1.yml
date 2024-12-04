@@ -1,0 +1,48 @@
+name: Create Release for Salesforce1
+
+on:
+  pull_request:
+    types: [closed] # Trigger when a PR is closed
+    branches:
+      - main       # Trigger only if the PR targets the main branch
+
+env:
+  ASSET_NAME: salesforce-package
+  VERSION: '1.0.0' # Replace with your semantic versioning logic if required
+
+jobs:
+  create-release:
+    if: github.event.pull_request.merged == true # Ensure it runs only for merged PRs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Prepare Files for Archive
+        run: |
+          mkdir -p archive
+          cp -r src manifest archive/ # Adjust these paths based on your repo structure
+          zip -r ${{ env.ASSET_NAME }}.zip ./archive
+          ls -lh ${{ env.ASSET_NAME }}.zip
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}.${{ github.run_number }}
+          release_name: ${{ env.VERSION }}.${{ github.run_number }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET_NAME }}.zip
+          asset_name: ${{ env.ASSET_NAME }}.zip
+          asset_content_type: application/zip
