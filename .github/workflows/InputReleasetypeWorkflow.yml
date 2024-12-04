@@ -1,4 +1,4 @@
-name:  Input Release type and Deployment Workflow
+name:  Release and Deployment Workflow
 'on':
   workflow_dispatch:
     inputs:
@@ -59,14 +59,25 @@ jobs:
           '\n' ' ')" >> $GITHUB_ENV
       - name: Cherry-Pick to Environment
         run: |
-          BRANCH=${{ env.DEV_BRANCH }}
-          if [[ "${{ inputs.environment }}" == "prod" ]]; then
-            BRANCH=${{ env.PROD_BRANCH }}
-          elif [[ "${{ inputs.environment }}" == "mot" ]]; then
-            BRANCH=${{ env.MOT_BRANCH }}
-          elif [[ "${{ inputs.environment }}" == st* ]]; then
-            BRANCH="${{ env.ST_BRANCH_PREFIX }}${{ inputs.environment:2 }}"
-          fi
+          # Determine the branch based on the environment
+          case "${{ inputs.environment }}" in
+            dev)
+              BRANCH=${{ env.DEV_BRANCH }}
+              ;;
+            prod)
+              BRANCH=${{ env.PROD_BRANCH }}
+              ;;
+            mot)
+              BRANCH=${{ env.MOT_BRANCH }}
+              ;;
+            st[1-9]|st10)
+              BRANCH="${{ env.ST_BRANCH_PREFIX }}${{ inputs.environment#st }}"
+              ;;
+            *)
+              echo "Invalid environment: ${{ inputs.environment }}"
+              exit 1
+              ;;
+          esac
 
           echo "Target Branch: $BRANCH"
           git checkout $BRANCH
