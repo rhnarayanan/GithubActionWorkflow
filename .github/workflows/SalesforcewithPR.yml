@@ -1,4 +1,4 @@
-name: Create Release for Salesforce
+name: Create Release for SalesforcePR
 
 on:
   pull_request:
