@@ -1,4 +1,4 @@
-name:  Release and Deployment Workflow
+name: Release and Deployment Workflow
 'on':
   workflow_dispatch:
     inputs:
@@ -57,29 +57,31 @@ jobs:
 
           echo "CHERRY_PICK_COMMITS=$(cat commits.txt | awk '{print $1}' | tr
           '\n' ' ')" >> $GITHUB_ENV
-      - name: Cherry-Pick to Environment
+      - name: Determine Target Branch
+        id: target_branch
         run: |
-          # Determine the branch based on the environment
           case "${{ inputs.environment }}" in
             dev)
-              BRANCH=${{ env.DEV_BRANCH }}
+              echo "BRANCH=${{ env.DEV_BRANCH }}" >> $GITHUB_ENV
               ;;
             prod)
-              BRANCH=${{ env.PROD_BRANCH }}
+              echo "BRANCH=${{ env.PROD_BRANCH }}" >> $GITHUB_ENV
               ;;
             mot)
-              BRANCH=${{ env.MOT_BRANCH }}
+              echo "BRANCH=${{ env.MOT_BRANCH }}" >> $GITHUB_ENV
               ;;
-            st[1-9]|st10)
-              BRANCH="${{ env.ST_BRANCH_PREFIX }}${{ inputs.environment#st }}"
+            st*)
+              # Extract the staging number (e.g., 'st1' -> '1')
+              ST_NUMBER=${{ inputs.environment#st }}
+              echo "BRANCH=${{ env.ST_BRANCH_PREFIX }}$ST_NUMBER" >> $GITHUB_ENV
               ;;
             *)
               echo "Invalid environment: ${{ inputs.environment }}"
               exit 1
               ;;
           esac
-
-          echo "Target Branch: $BRANCH"
+      - name: Cherry-Pick to Target Branch
+        run: |
           git checkout $BRANCH
           git cherry-pick $CHERRY_PICK_COMMITS
           git push origin $BRANCH
