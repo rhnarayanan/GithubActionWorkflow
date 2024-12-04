@@ -1,0 +1,79 @@
+name:  Input Release type and Deployment Workflow
+'on':
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Enter release type (e.g., patch, minor, major)'
+        required: true
+      environment:
+        description: 'Enter environment (e.g., dev, st1, st2, ... prod)'
+        required: true
+env:
+  DEV_BRANCH: dev
+  ST_BRANCH_PREFIX: st
+  MOT_BRANCH: mot
+  PROD_BRANCH: main
+jobs:
+  release-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Generate Release Tag
+        id: generate_tag
+        run: |
+          # Auto-increment version based on the release type
+          if [ "${{ inputs.release_type }}" == "patch" ]; then
+            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1 "." $2 "." $3+1}')
+          elif [ "${{ inputs.release_type }}" == "minor" ]; then
+            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1 "." $2+1 ".0"}')
+          elif [ "${{ inputs.release_type }}" == "major" ]; then
+            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1+1 ".0.0"}')
+          else
+            echo "Invalid release type: ${{ inputs.release_type }}"
+            exit 1
+          fi
+
+          echo "Generated Release Tag: $VERSION"
+          echo "RELEASE_TAG=$VERSION" >> $GITHUB_ENV
+      - name: Push Release Tag
+        run: |
+          git tag $RELEASE_TAG
+          git push origin $RELEASE_TAG
+      - name: Identify Commits
+        id: commits
+        run: >
+          # Extract commits between the previous and current release tags
+
+          PREV_TAG=$(git describe --tags --abbrev=0 ${RELEASE_TAG}^)
+
+          echo "Previous Tag: $PREV_TAG"
+
+          git log ${PREV_TAG}..${RELEASE_TAG} --oneline > commits.txt
+
+          cat commits.txt
+
+          echo "CHERRY_PICK_COMMITS=$(cat commits.txt | awk '{print $1}' | tr
+          '\n' ' ')" >> $GITHUB_ENV
+      - name: Cherry-Pick to Environment
+        run: |
+          BRANCH=${{ env.DEV_BRANCH }}
+          if [[ "${{ inputs.environment }}" == "prod" ]]; then
+            BRANCH=${{ env.PROD_BRANCH }}
+          elif [[ "${{ inputs.environment }}" == "mot" ]]; then
+            BRANCH=${{ env.MOT_BRANCH }}
+          elif [[ "${{ inputs.environment }}" == st* ]]; then
+            BRANCH="${{ env.ST_BRANCH_PREFIX }}${{ inputs.environment:2 }}"
+          fi
+
+          echo "Target Branch: $BRANCH"
+          git checkout $BRANCH
+          git cherry-pick $CHERRY_PICK_COMMITS
+          git push origin $BRANCH
+      - name: Deploy to Target Environment
+        run: |
+          TARGET_ENV=${{ inputs.environment }}
+          echo "Deploying to Environment: $TARGET_ENV"
+          sfdx force:source:deploy -p ./src -u $TARGET_ENV
