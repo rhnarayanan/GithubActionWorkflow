@@ -28,7 +28,6 @@ jobs:
       - name: Generate Release Tag
         id: generate_tag
         run: |
-          # Auto-increment version based on the release type
           if [ "${{ inputs.release_type }}" == "patch" ]; then
             VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1 "." $2 "." $3+1}')
           elif [ "${{ inputs.release_type }}" == "minor" ]; then
@@ -39,22 +38,19 @@ jobs:
             echo "Invalid release type: ${{ inputs.release_type }}"
             exit 1
           fi
-
           echo "Generated Release Tag: $VERSION"
           echo "RELEASE_TAG=$VERSION" >> $GITHUB_ENV
       - name: Push Release Tag
         run: |
           if git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
-           echo "Tag $RELEASE_TAG already exists. Skipping..."
+            echo "Tag $RELEASE_TAG already exists. Skipping..."
           else
-           git tag $RELEASE_TAG
-           git push origin $RELEASE_TAG
-          fi          
+            git tag $RELEASE_TAG
+            git push origin $RELEASE_TAG
+          fi
       - name: Identify Commits
         id: commits
         run: >
-          # Extract commits between the previous and current release tags
-
           PREV_TAG=$(git describe --tags --abbrev=0 ${RELEASE_TAG}^)
 
           echo "Previous Tag: $PREV_TAG"
@@ -79,8 +75,7 @@ jobs:
               echo "BRANCH=${{ env.MOT_BRANCH }}" >> $GITHUB_ENV
               ;;
             st*)
-              # Extract the staging number (e.g., 'st1' -> '1')
-              ST_NUMBER=${{ inputs.environment }}
+              ST_NUMBER=$(echo "${{ inputs.environment }}" | sed 's/st//')
               echo "BRANCH=${{ env.ST_BRANCH_PREFIX }}$ST_NUMBER" >> $GITHUB_ENV
               ;;
             *)
@@ -88,43 +83,23 @@ jobs:
               exit 1
               ;;
           esac
-      - name: Checkout Branch
+      - name: Cherry-Pick Commits to Target Branch
         run: |
+          BRANCH=${{ steps.target_branch.outputs.BRANCH }}
           if git show-ref --verify --quiet refs/heads/$BRANCH; then
-             echo "Branch $BRANCH exists remotely. Checking out..."
-             git checkout $BRANCH
-          else
-             echo "Branch $BRANCH does not exist. Creating a new branch..."
-             git checkout -b $BRANCH
-          fi
-      - name: Cherry-Pick Commit
-        run: >
-          git cherry-pick $COMMIT_HASH || true # Proceed even if cherry-pick
-          fails
-      - name: Handle Cherry-Pick Conflict
-        if: failure()
-        run: |
-          if git status | grep 'You are currently cherry-picking'; then
-             echo "Handling cherry-pick conflict..."
-             git add .
-             git cherry-pick --continue || git cherry-pick --skip || git cherry-pick --abort
-          fi
-      - name: Cherry-Pick to Target Branch
-        run: |
-          if git show-ref --verify --quiet refs/heads/$BRANCH; then
-            echo "Branch $BRANCH exists locally."
-          elif git ls-remote --heads origin $BRANCH | grep $BRANCH; then
-            echo "Branch $BRANCH exists remotely. Checking out..."
+            echo "Branch $BRANCH exists. Checking out..."
             git checkout $BRANCH
           else
-            echo "Branch $BRANCH does not exist. Creating it..."
+            echo "Branch $BRANCH does not exist. Creating new branch..."
             git checkout -b $BRANCH
-            git push origin $BRANCH
+            git push --set-upstream origin $BRANCH
           fi
-          git cherry-pick $(cat commits.txt | awk '{print $1}' | tr '\n' ' ')
+          for COMMIT in $CHERRY_PICK_COMMITS; do
+            git cherry-pick $COMMIT || \
+              (echo "Conflict detected! Resolving automatically..." && git add . && git cherry-pick --continue || git cherry-pick --abort)
+          done
           git push origin $BRANCH
       - name: Deploy to Target Environment
         run: |
-          TARGET_ENV=${{ inputs.environment }}
-          echo "Deploying to Environment: $TARGET_ENV"
-          sfdx force:source:deploy -p ./src -u $TARGET_ENV
+          echo "Deploying to Environment: ${{ inputs.environment }}"
+          sfdx force:source:deploy -p ./src -u ${{ inputs.environment }}
