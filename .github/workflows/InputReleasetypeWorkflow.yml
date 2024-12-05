@@ -28,12 +28,13 @@ jobs:
       - name: Generate Release Tag
         id: generate_tag
         run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 || echo "0.0.0")
           if [ "${{ inputs.release_type }}" == "patch" ]; then
-            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1 "." $2 "." $3+1}')
+            VERSION=$(echo $LAST_TAG | awk -F. '{print $1 "." $2 "." $3+1}')
           elif [ "${{ inputs.release_type }}" == "minor" ]; then
-            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1 "." $2+1 ".0"}')
+            VERSION=$(echo $LAST_TAG | awk -F. '{print $1 "." $2+1 ".0"}')
           elif [ "${{ inputs.release_type }}" == "major" ]; then
-            VERSION=$(git describe --tags --abbrev=0 | awk -F. '{print $1+1 ".0.0"}')
+            VERSION=$(echo $LAST_TAG | awk -F. '{print $1+1 ".0.0"}')
           else
             echo "Invalid release type: ${{ inputs.release_type }}"
             exit 1
@@ -51,7 +52,12 @@ jobs:
       - name: Identify Commits
         id: commits
         run: >
-          PREV_TAG=$(git describe --tags --abbrev=0 ${RELEASE_TAG}^)
+          PREV_TAG=$(git describe --tags --abbrev=0 $RELEASE_TAG^ || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found. Using the first commit."
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
 
           echo "Previous Tag: $PREV_TAG"
 
@@ -76,6 +82,10 @@ jobs:
               ;;
             st*)
               ST_NUMBER=$(echo "${{ inputs.environment }}" | sed 's/st//')
+              if [[ -z "$ST_NUMBER" ]]; then
+                echo "Invalid staging environment: ${{ inputs.environment }}"
+                exit 1
+              fi
               echo "BRANCH=${{ env.ST_BRANCH_PREFIX }}$ST_NUMBER" >> $GITHUB_ENV
               ;;
             *)
@@ -83,20 +93,33 @@ jobs:
               exit 1
               ;;
           esac
-      - name: Cherry-Pick Commits to Target Branch
+          echo "Target Branch: $BRANCH"
+      - name: Debug Branch Value
         run: |
-          BRANCH=${{ steps.target_branch.outputs.BRANCH }}
+          echo "Branch: $BRANCH"
+          if [ -z "$BRANCH" ]; then
+            echo "Error: BRANCH is empty!"
+            exit 1
+          fi
+      - name: Checkout or Create Branch
+        run: |
+          BRANCH=${{ env.BRANCH }}
           if git show-ref --verify --quiet refs/heads/$BRANCH; then
-            echo "Branch $BRANCH exists. Checking out..."
+            echo "Branch $BRANCH exists locally. Checking out..."
             git checkout $BRANCH
+          elif git ls-remote --heads origin $BRANCH | grep $BRANCH; then
+            echo "Branch $BRANCH exists remotely. Checking out..."
+            git checkout -b $BRANCH --track origin/$BRANCH
           else
-            echo "Branch $BRANCH does not exist. Creating new branch..."
+            echo "Branch $BRANCH does not exist. Creating it..."
             git checkout -b $BRANCH
             git push --set-upstream origin $BRANCH
           fi
+      - name: Cherry-Pick Commits
+        run: |
           for COMMIT in $CHERRY_PICK_COMMITS; do
             git cherry-pick $COMMIT || \
-              (echo "Conflict detected! Resolving automatically..." && git add . && git cherry-pick --continue || git cherry-pick --abort)
+              (echo "Conflict detected! Resolving..." && git add . && git cherry-pick --continue || git cherry-pick --abort)
           done
           git push origin $BRANCH
       - name: Deploy to Target Environment
