@@ -82,8 +82,17 @@ jobs:
           esac
       - name: Cherry-Pick to Target Branch
         run: |
-          git checkout $BRANCH
-          git cherry-pick $CHERRY_PICK_COMMITS
+          if git show-ref --verify --quiet refs/heads/$BRANCH; then
+            echo "Branch $BRANCH exists locally."
+          elif git ls-remote --heads origin $BRANCH | grep $BRANCH; then
+            echo "Branch $BRANCH exists remotely. Checking out..."
+            git checkout $BRANCH
+          else
+            echo "Branch $BRANCH does not exist. Creating it..."
+            git checkout -b $BRANCH
+            git push origin $BRANCH
+          fi
+          git cherry-pick $(cat commits.txt | awk '{print $1}' | tr '\n' ' ')
           git push origin $BRANCH
       - name: Deploy to Target Environment
         run: |
