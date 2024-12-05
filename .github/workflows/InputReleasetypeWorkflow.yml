@@ -1,4 +1,4 @@
-name: Release and Deployment Workflow
+name: Input Release type Workflow
 'on':
   workflow_dispatch:
     inputs:
@@ -21,6 +21,10 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      - name: Set Git Identity
+        run: |
+          git config --global user.name "rhnarayanan"
+          git config --global user.email "rhnarayanan@gmail.com"
       - name: Generate Release Tag
         id: generate_tag
         run: |
