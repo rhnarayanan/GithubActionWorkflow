@@ -63,8 +63,6 @@ jobs:
 
           git log ${PREV_TAG}..${RELEASE_TAG} --oneline > commits.txt
 
-          cat commits.txt
-
           echo "CHERRY_PICK_COMMITS=$(cat commits.txt | awk '{print $1}' | tr
           '\n' ' ')" >> $GITHUB_ENV
       - name: Determine Target Branch
@@ -94,24 +92,14 @@ jobs:
               ;;
           esac
           echo "Target Branch: $BRANCH"
-      - name: Debug Branch Value
-        run: |
-          echo "Branch: $BRANCH"
-          if [ -z "$BRANCH" ]; then
-            echo "Error: BRANCH is empty!"
-            exit 1
-          fi
       - name: Checkout or Create Branch
         run: |
           BRANCH=${{ env.BRANCH }}
           if git show-ref --verify --quiet refs/heads/$BRANCH; then
-            echo "Branch $BRANCH exists locally. Checking out..."
             git checkout $BRANCH
           elif git ls-remote --heads origin $BRANCH | grep $BRANCH; then
-            echo "Branch $BRANCH exists remotely. Checking out..."
             git checkout -b $BRANCH --track origin/$BRANCH
           else
-            echo "Branch $BRANCH does not exist. Creating it..."
             git checkout -b $BRANCH
             git push --set-upstream origin $BRANCH
           fi
@@ -119,10 +107,14 @@ jobs:
         run: |
           for COMMIT in $CHERRY_PICK_COMMITS; do
             git cherry-pick $COMMIT || \
-              (echo "Conflict detected! Resolving..." && git add . && git cherry-pick --continue || git cherry-pick --abort)
+              (git add . && git cherry-pick --continue || git cherry-pick --skip)
           done
           git push origin $BRANCH
       - name: Deploy to Target Environment
         run: |
           echo "Deploying to Environment: ${{ inputs.environment }}"
           sfdx force:source:deploy -p ./src -u ${{ inputs.environment }}
+      - name: Add Workflows Permission Debugging
+        if: failure()
+        run: |
+          echo "Workflow permissions error detected. Check repository settings."
