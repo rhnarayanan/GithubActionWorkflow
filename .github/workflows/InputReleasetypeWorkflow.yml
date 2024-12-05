@@ -1,4 +1,4 @@
-name: Input Release type Workflow
+name: Release and Deployment Workflow
 'on':
   workflow_dispatch:
     inputs:
@@ -88,6 +88,27 @@ jobs:
               exit 1
               ;;
           esac
+      - name: Checkout Branch
+        run: |
+          if git show-ref --verify --quiet refs/heads/$BRANCH; then
+             echo "Branch $BRANCH exists remotely. Checking out..."
+             git checkout $BRANCH
+          else
+             echo "Branch $BRANCH does not exist. Creating a new branch..."
+             git checkout -b $BRANCH
+          fi
+      - name: Cherry-Pick Commit
+        run: >
+          git cherry-pick $COMMIT_HASH || true # Proceed even if cherry-pick
+          fails
+      - name: Handle Cherry-Pick Conflict
+        if: failure()
+        run: |
+          if git status | grep 'You are currently cherry-picking'; then
+             echo "Handling cherry-pick conflict..."
+             git add .
+             git cherry-pick --continue || git cherry-pick --skip || git cherry-pick --abort
+          fi
       - name: Cherry-Pick to Target Branch
         run: |
           if git show-ref --verify --quiet refs/heads/$BRANCH; then
