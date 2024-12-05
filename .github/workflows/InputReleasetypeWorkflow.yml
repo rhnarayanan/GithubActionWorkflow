@@ -72,7 +72,7 @@ jobs:
               ;;
             st*)
               # Extract the staging number (e.g., 'st1' -> '1')
-              ST_NUMBER=${{ inputs.environment#st }}
+              ST_NUMBER=${{ inputs.environment }}
               echo "BRANCH=${{ env.ST_BRANCH_PREFIX }}$ST_NUMBER" >> $GITHUB_ENV
               ;;
             *)
