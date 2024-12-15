@@ -3,50 +3,60 @@ name: Create Release for SalesforcePR
 on:
   push:
     branches:
-      - main # Trigger on push (after PR merge) to main branch
+      - main  # Trigger on push (after PR merge) to the main branch
 
 env:
   ASSET_NAME: salesforce-package
-  VERSION: '1.0.0' # Replace with dynamic versioning if needed
+  VERSION: '1.0.0'  # Replace with dynamic versioning if needed
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout the repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Debug Repository contents to verify paths
+      - name: Debug Repository Contents
+        run: |
+          echo "Repository root contents:"
+          ls -la
+
+      # Prepare files for archiving
       - name: Prepare Files for Archive
         run: |
           mkdir -p archive
-          cp -r src manifest archive/ # Adjust based on your repo structure
+          # Check if src directory exists and copy
+          if [ -d "src" ]; then
+            cp -r src archive/
+          else
+            echo "Warning: 'src' directory does not exist."
+          fi
+          # Check if manifest directory exists and copy
+          if [ -d "manifest" ]; then
+            cp -r manifest archive/
+          else
+            echo "Warning: 'manifest' directory does not exist."
+          fi
+          # Create a zip file from the archive folder
           zip -r ${{ env.ASSET_NAME }}.zip ./archive
           ls -lh ${{ env.ASSET_NAME }}.zip
 
-      - name: Determine Target Environment
-        id: env_branch
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "env=PROD" >> $GITHUB_ENV
-          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
-            echo "env=DEV" >> $GITHUB_ENV
-          elif [[ "${{ github.ref }}" == "refs/heads/uat" ]]; then
-            echo "env=UAT" >> $GITHUB_ENV
-          fi
-        shell: bash
-
+      # Create GitHub Release
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.VERSION }}-${{ github.run_number }}-${{ env.env }}
-          release_name: ${{ env.VERSION }}.${{ github.run_number }} (${{ env.env }})
+          tag_name: ${{ env.VERSION }}-${{ github.run_number }}
+          release_name: ${{ env.VERSION }}.${{ github.run_number }}
           draft: false
           prerelease: false
 
+      # Upload the release asset
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -54,5 +64,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.ASSET_NAME }}.zip
-          asset_name: ${{ env.ASSET_NAME }}-${{ env.env }}.zip
+          asset_name: ${{ env.ASSET_NAME }}.zip
           asset_content_type: application/zip
