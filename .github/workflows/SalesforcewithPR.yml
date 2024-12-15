@@ -1,18 +1,16 @@
 name: Create Release for SalesforcePR
 
 on:
-  pull_request:
-    types: [closed] # Trigger when a PR is closed
+  push:
     branches:
-      - main       # Trigger only if the PR targets the main branch
+      - main # Trigger on push (after PR merge) to main branch
 
 env:
   ASSET_NAME: salesforce-package
-  VERSION: '1.0.0' # Replace with your semantic versioning logic if required
+  VERSION: '1.0.0' # Replace with dynamic versioning if needed
 
 jobs:
   create-release:
-    if: github.event.pull_request.merged == true # Ensure it runs only for merged PRs
     runs-on: ubuntu-latest
 
     steps:
@@ -22,9 +20,21 @@ jobs:
       - name: Prepare Files for Archive
         run: |
           mkdir -p archive
-          cp -r src manifest archive/ # Adjust these paths based on your repo structure
+          cp -r src manifest archive/ # Adjust based on your repo structure
           zip -r ${{ env.ASSET_NAME }}.zip ./archive
           ls -lh ${{ env.ASSET_NAME }}.zip
+
+      - name: Determine Target Environment
+        id: env_branch
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "env=PROD" >> $GITHUB_ENV
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "env=DEV" >> $GITHUB_ENV
+          elif [[ "${{ github.ref }}" == "refs/heads/uat" ]]; then
+            echo "env=UAT" >> $GITHUB_ENV
+          fi
+        shell: bash
 
       - name: Create Release
         id: create_release
@@ -32,8 +42,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.VERSION }}.${{ github.run_number }}
-          release_name: ${{ env.VERSION }}.${{ github.run_number }}
+          tag_name: ${{ env.VERSION }}-${{ github.run_number }}-${{ env.env }}
+          release_name: ${{ env.VERSION }}.${{ github.run_number }} (${{ env.env }})
           draft: false
           prerelease: false
 
@@ -44,5 +54,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.ASSET_NAME }}.zip
-          asset_name: ${{ env.ASSET_NAME }}.zip
+          asset_name: ${{ env.ASSET_NAME }}-${{ env.env }}.zip
           asset_content_type: application/zip
